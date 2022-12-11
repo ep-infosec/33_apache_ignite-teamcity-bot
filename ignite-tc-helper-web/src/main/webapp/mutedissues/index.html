@@ -1,0 +1,312 @@
+<html>
+<head>
+    <title>Apache Ignite Teamcity Bot - Muted issues</title>
+    <link rel="icon" href="/img/leaf-icon-png-7066.png">
+
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+    <!-- production version, optimized for size and speed -->
+    <!--<script src="https://cdn.jsdelivr.net/npm/vue"></script>-->
+
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900|Material+Icons" rel="stylesheet">
+
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@3.x/css/materialdesignicons.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="/css/style-1.5.css">
+
+    <script src="/js/common-1.6.js"></script>
+
+    <style>
+        input.solid {border-style: solid;}
+        textarea.solid {border-style: solid;}
+        select.solid {border-style: solid;}
+        select#selBranch {
+            border-style: solid;
+            -webkit-appearance: auto;
+            -webkit-writing-mode: horizontal-tb !important;
+            -webkit-rtl-ordering: logical;
+        }
+    </style>
+</head>
+<body>
+
+<div id="message" title="Edit issue">
+    <label>Issue</label><br>
+    <textarea rows="2" cols="60" class="solid" id="issueName" readonly></textarea><br>
+    <label>Jira ticket</label><br>
+    <textarea maxlength = "100" rows="2" cols="60" class="solid" id="jiraTicket"></textarea><br>
+    <label>Comment</label><br>
+    <textarea maxlength = "500" rows="7" cols="60" class="solid" id="comment"></textarea><br>
+</div>
+
+<script>
+    $('#message').dialog({
+        autoOpen: false,
+        modal: true,
+        maxWidth:600,
+        maxHeight: 500,
+        width: 600,
+        height: 350,
+        show: {
+            effect: "fade",
+            duration: 1000
+            },
+        hide: {
+            effect: "blind",
+            duration: 500
+            },
+        open: function() {
+            $(this).parent().promise().done(function () {
+                document.getElementById('issueName').value = $("#message").data('issue').name;
+                document.getElementById('jiraTicket').value = $("#message").data('issue').jiraTicket;
+                document.getElementById('comment').value = $("#message").data('issue').comment;
+            });
+        },
+        close: function() {
+            $(this).parent().promise().done(function () {
+                document.getElementById('issueName').value = '';
+                document.getElementById('jiraTicket').value = '';
+                document.getElementById('comment').value = '';
+            });
+        },
+        buttons: {
+            Save: function() {
+                    $.ajax({
+                        url: "/rest/board/updateIssue",
+                        type: 'PATCH',
+                        data: { tcSrvId: $("#message").data('issue').tcSrvId,
+                                nameId: $("#message").data('issue').nameId,
+                                branch: $("#message").data('issue').branch,
+                                issueType: $("#message").data('issue').issueType,
+                                jiraTicket: document.getElementById('jiraTicket').value,
+                                comment: document.getElementById('comment').value
+                              },
+                        error: function (jqXHR, exception) {
+                            showErrInLoadStatus(jqXHR, exception);
+                        }
+                    });
+                $(this).dialog("close");
+                },
+            Unmute: function() {
+                    $.ajax({
+                        url: "/rest/board/unmuteIssue",
+                        type: 'DELETE',
+                        data: { tcSrvId: $("#message").data('issue').tcSrvId,
+                                nameId: $("#message").data('issue').nameId,
+                                branch: $("#message").data('issue').branch,
+                                issueType: $("#message").data('issue').issueType
+                                }
+                    });
+                    $(this).dialog("close");
+                },
+            Cancel: function() {
+                $(this).dialog("close");
+                }
+        }
+    });
+
+    var g_shownDataHashCodeHex = "";
+    let gVue, g_Loading, g_TcBotVersion;
+
+    $(document).ready(function() {
+        $.getScript("/js/testfails-2.2.js", function(data, textStatus, jqxhr){ });
+
+        $( document ).tooltip();
+        showQueryForm();
+
+        loadData();
+
+        setInterval(loadDataSilent, 7000);
+
+        $.ajax({ url: "/rest/branches/version",  success: showVersionInfo, error: showErrInLoadStatus });
+    });
+
+    $(window).on('pageshow', function() {
+        gVue.$data.baseBranchSelected = 'All branches';
+    });
+
+    function showQueryForm() {
+        gVue = new Vue({
+            el: '#vueQueryForm',
+            vuetify: new Vuetify(),
+            data: {
+                baseBranchSelected: '',
+                baseBranches: new Set(),
+                issues: [],
+                expanded: [],
+                headers: [
+                    {text: "Name", value: 'name'},
+                    {text: 'Issue type', value: 'issueType'},
+                    {text: 'Branch', value: 'trackedBranch'},
+                    {text: "Ticket", value: 'jiraTicket'},
+                    {text: "Comment", value: 'comment'},
+                    {text: "User", value: 'userName'},
+                    {text: "Edit", value: 'edit'},
+                ]
+            },
+            methods: {
+                formChanged: function () {
+                    loadDataSilent();
+                },
+                editModal: function (item) {
+                    $('#message')
+                        .data('issue', item)
+                        .dialog("open");
+                    },
+            }
+        });
+    }
+
+    function parmsForRest() {
+        var curReqParms = "";
+        var branch = findGetParameter("branch");
+        if (branch != null) {
+            curReqParms += "?branch=" + branch;
+        }
+
+        if (gVue.$data.baseBranchSelected != null &&
+                gVue.$data.baseBranchSelected != "" &&
+                typeof gVue.$data.baseBranchSelected !== 'undefined' &&
+                gVue.$data.baseBranchSelected != 'All branches') {
+            curReqParms += "?baseBranch=" +  gVue.$data.baseBranchSelected;
+        }
+
+        return curReqParms;
+    }
+
+    function loadDataFromServer(silent) {
+        g_Loading = true;
+        if (!silent) $("#loadStatus").html("&#8987; Please wait");
+
+        var curFailuresUrl = "/rest/board/mutedIssues" + parmsForRest();
+        $.ajax({
+            url: curFailuresUrl,
+            success: function (result) {
+                $("#loadStatus").html("");
+
+                showData(result);
+
+                g_Loading = false;
+            },
+            error: function (jqXHR, exception) {
+                g_Loading = false;
+                showErrInLoadStatus(jqXHR, exception);
+            }
+        });
+    }
+
+    function loadData() {
+        loadDataFromServer(false);
+    }
+
+    function validateVersionsConsistency() {
+        $.ajax({
+            url: "/rest/branches/version", success: function (result) {
+                if (g_TcBotVersion == null)
+                    g_TcBotVersion = result.version;
+                else if (g_TcBotVersion !== result.version)
+                    window.location.reload(true);
+
+            }, error: showErrInLoadStatus
+        });
+    }
+
+    function loadDataSilent() {
+        if(g_Loading)
+            return;
+
+        try {
+            loadDataFromServer(true);
+            validateVersionsConsistency();
+        } catch (e) {
+            console.log(e);
+        }
+    }
+
+    function showData(issues) {
+        gVue.$data.issues = issues;
+
+        branches = [];
+
+        issues.forEach(function (issue, index) {
+            branches.push(issue.trackedBranch)
+        });
+
+        branches.sort();
+
+        branches.forEach(function (branch, index) {
+            gVue.$data.baseBranches.add(branch)
+        });
+    }
+
+</script>
+
+<div id="loadStatus"></div>
+<div id="vueQueryForm" class="h-25">
+
+    <div class="formgroup">
+        <span>Branch:</span>
+        <select v-model="baseBranchSelected" @change="formChanged" id="selBranch">
+            <option  value="All branches">All branches</option>
+
+            <option v-for="option in baseBranches" v-bind:value="option">
+                {{ option }}
+            </option>
+        </select>
+    </div>
+
+    <v-app id="queryForm" class="h-25">
+
+        <v-data-table
+                :headers="headers"
+                :items="issues"
+                sort-by="name"
+                dense
+                multi-sort
+        >
+            <template v-slot:item="{ headers, item }">
+                        <tr>
+                            <td style="width:20%">
+                                <a v-if="item.webUrl !== null && item.webUrl !== ''" :href="item.webUrl">
+                                    {{ item.name }}
+                                </a>
+                                <span v-else>
+                                {{ item.name }}
+                                </span>
+                            </td>
+                            <td style="width:10%">
+                                {{ item.issueType }}
+                            </td>
+                            <td style="width:10%">
+                                {{ item.trackedBranch }}
+                            </td>
+                            <td style="width:15%">
+                                <a :href="item.jiraTicket">
+                                    {{ item.jiraTicket }}
+                                </a>
+                            </td>
+                            <td style="width:35%">
+                                {{ item.comment }}
+                            </td>
+                            <td style="width:5%">
+                                {{ item.userName }}
+                            </td>
+                            <td style="width:5%">
+                                <button class="editModal" v-on:click="editModal(item)">Edit</button>
+                            </td>
+                        </tr>
+            </template>
+        </v-data-table>
+
+    </v-app>
+</div>
+
+<div id="version"></div>
+<div style="visibility:hidden;"><div id="triggerConfirm" title="Trigger Confirmation"></div><div id="triggerDialog" title="Trigger Result"></div></div>
+</body>
+</html>

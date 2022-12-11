@@ -1,0 +1,180 @@
+{
+  // Default server (service) code, internal identification
+  "primaryServerCode": "apache",
+  "confidence": 0.995,
+  "cleanerConfig": {
+    "numOfItemsToDel": 100000,
+    "safeDaysForCaches": 180,
+    "safeDaysForLogs": 90,
+    "period": 1440
+  },
+  /* Teamcity Integration Parameters */
+  "tcServers": [
+    {
+      /* Service Code for internal identification */
+      "code": "apache",
+      /** Teamcity Host, HTTPs is highly recommended because of Basic Auth used.*/
+      "host": "https://ci.ignite.apache.org/",
+      /** Downloaded build logs relative path. */
+      "logsDir": "apache_logs",
+      /** Default tracked branch name in internal identification of TC bot. */
+      "defaultTrackedBranch": "master",
+      /** Time as auto-triggering build is disabled. ISO time formatting must be used, e.g. 09:00:00. Should be set simultaneusly with autoTriggeringBuildDisabledEndTime. */
+      // "autoTriggeringBuildDisabledStartTime": "07:00:00",
+      /** Time as auto-triggering build is enabled. ISO time formatting must be used, e.g. 18:00:00. Should be set simultaneusly with autoTriggeringBuildDisabledStartTime. */
+      // "autoTriggeringBuildDisabledEndTime": "20:00:00",
+
+      /** Build parameters, which may be used for filtering Run history and tagging builds. */
+      "filteringParameters": [
+        {
+          "name": "env.JAVA_HOME",
+          "selection": [
+            {"value":"%env.JDK_ORA_18%", "label":"JDK8"},
+            {"value":"%env.JDK_ORA_8%", "label":"JDK8"},
+            {"value":"%env.JDK_ORA_9%", "label":"JDK9"},
+            {"value":"%env.JDK_ORA_10%", "label":"JDK10"},
+            {"value":"%env.JDK_OPEN_11%", "label":"JDK11"}
+          ]
+        },
+        {
+          "name": "TEST_SCALE_FACTOR",
+          "selection": [
+            {"value":"1.0", "label":"S1.0"},
+            {"value":"0.1", "label":"S0.1"}
+          ]
+        }
+      ],
+      /** Build type IDs, which should trigger notifications about any non build problem, and should be blocker in this case. **/
+      "trustedSuites": [
+        "IgniteTests24Java8_LicensesHeaders",
+        "IgniteTests24Java8_CheckCodeStyle",
+        "IgniteTests24Java8_Javadoc"
+      ]
+    }
+  ],
+  /* Set of JIRA servers/projects configured */
+  "jiraServers": [
+    {
+      /* Server code will be referenced in all tracked branches, URLs, etc */
+      "code": "apache",
+      /* JIRA project code for commenting tickets. Default project is "IGNITE". */
+      "projectCode": "IGNITE",
+      /* Following prefix is to be specified only if it is necessary to separate project code and branches markup in tickets. */
+      // "branchNumPrefix": "IGNITE-",
+      /* JIRA Url, HTTPs is highly recommended because of Basic Auth used. */
+      "url": "https://issues.apache.org/jira/",
+      /** JIRA Auth token to access,
+        Base-64 pre-encoded username and password, which will be included into Basic Auth requests.
+        Encoded token needs to be encrypted using org.apache.ignite.ci.tcbot.conf.PasswordEncoder,
+        use PasswordEncoder#encodeJiraTok to get from clear username/password */
+      "authTok": ""
+      //todo     ^ specify token
+    }
+  ],
+  /* Set of GitHub services configured: GitHub integration parameters.*/
+  "gitHubConfigs": [
+    {
+      "code": "apache",
+      /* More for preffering branches gives branch for PR to be default branch for triggering builds on TC. */
+      "preferBranches": false,
+
+      /** Branch identification rules: PR-less contribution branch name mandatory prefix */
+      "branchPrefix": "ignite-",
+
+      /*
+        Specify GitHub Auth token (if needed), go to User->Settings->Developers options->create new.
+        Created token needs to be encrypted using org.apache.ignite.ci.tcbot.conf.PasswordEncoder,
+        use {@link org.apache.ignite.ci.conf.PasswordEncoder#encode} to set up value in a config.
+        Git Auth token encoded to access non-public GitHub repos. For public GitHub repos token gives more velocity.
+       */
+      "authTok": "",
+      //todo     ^ specify token
+
+      /* REST API Url for GitHub. Includes owner (apache) and project (ignite). */
+      "apiUrl": "https://api.github.com/repos/apache/ignite/"
+    }
+  ],
+  "notifications": {
+    /* Email sending settings */
+    "email": {
+      /* Username, and 'from' field for emails. */
+      "username": "ignitetcbot@gmail.com",
+      "auth": true,
+      /** Email password encoded using Password Encoder.  */
+      "pwd": "",
+      //todo ^ specify password or set auth to false
+      "smtp": {
+        /** Host or IP */
+        "host": "127.0.0.1",
+        /** Default is 25 for non-ssl, 465 for ssl enabled */
+        "port": 465,
+        /** SSL enabled, default true */
+        "ssl": true
+      }
+    },
+    "channels": [
+      {
+        "email": "dev@ignite.apache.org",
+        "subscribed": [
+          "master", "master-nightly"
+        ]
+      }
+    ]
+  },
+  "branches": [
+    {
+      "id": "master",
+      "chains": [
+        {
+          "serverId": "apache",
+          "suiteId": "IgniteTests24Java8_RunAll",
+          "branchForRest": "\u003cdefault\u003e"
+        }
+      ],
+      /* Disable notifications for the following issue types. See {@link IssueType#code()}. */
+      "disableIssueTypes": []
+    },
+    {
+      "id": "master-nightly",
+      "chains": [
+        {
+          "serverId": "apache",
+          "suiteId": "IgniteTests24Java8_RunAllNightly",
+          "branchForRest": "\u003cdefault\u003e",
+          "triggerBuild": true,
+          /* Triggering quiet period in minutes. Protects from too-often triggering in case build is too fast, e.g. compilation failure. */
+          "triggerBuildQuietPeriod": 30,
+          /** List of build parameters should be specified for triggering build. Each parameter should have name and may have randomly selected or fixed value. */
+          "triggerParameters": [
+            {
+              "name": "reverse.dep.*.env.JAVA_HOME",
+              "randomValue": true,
+              "selection": [
+                {"value":"%env.JDK_ORA_18%", "label":"JDK8"},
+                {"value":"%env.JDK_OPEN_11%", "label":"JDK11"}
+              ]
+            }
+          ]
+        }
+      ],
+      /* Disable notifications for the following issue types. See {@link IssueType#code()}. */
+      "disableIssueTypes": []
+    },
+    {
+      "id": "ignite-2.11-nightly",
+      "chains": [
+        {
+          "serverId": "apache",
+          "suiteId": "IgniteTests24Java8_RunAllNightly",
+          "branchForRest": "ignite-2.11",
+          "baseBranchForTc": "ignite-2.10",
+          "triggerBuild": true,
+          //trigger twice per day
+          "triggerBuildQuietPeriod": 720  //triggering quiet period in minutes,
+        }
+      ],
+      /* Disable notifications for the following issue types. See {@link IssueType#code()}. */
+      "disableIssueTypes": []
+    }
+  ]
+}

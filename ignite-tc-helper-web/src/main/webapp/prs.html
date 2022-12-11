@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Apache Ignite Teamcity Bot - PR selection</title>
+    <meta charset="UTF-8">
+    <link rel="icon" href="img/leaf-icon-png-7066.png">
+
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css">
+
+    <link rel="stylesheet" href="css/style-1.5.css">
+
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="https://cdn.datatables.net/1.10.16/js/jquery.dataTables.js"></script>
+    <script src="https://cdn.datatables.net/1.10.16/js/dataTables.jqueryui.js"></script>
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.2/css/all.css"
+          integrity="sha384-/rXc/GQVaYpyDdyxK+ecHPVYJSN9bmVFBvjA/9eOB+pb3F2w2N6fc5qB9Ew5yIns" crossorigin="anonymous">
+
+    <script src="js/common-1.6.js"></script>
+    <script src="js/testfails-2.2.js"></script>
+    <script src="js/prs-1.2.js"></script>
+
+    <style>
+
+    </style>
+    <script>
+        const prs = new Map();
+
+        $(document).ready(function() {
+            $.getScript("js/common-1.6.js", function(data, textStatus, jqxhr){ });
+
+            $( document ).tooltip();
+
+            loadData();
+        });
+
+        function showTabs() {
+            var index = 'prsCheck_lastOpenedTab';  //  Define friendly index name
+            var dataStore = window.sessionStorage;  //  Define friendly data store name
+            var oldIndex;
+            try {
+                // getter: Fetch previous value
+                oldIndex = dataStore.getItem(index);
+            } catch (e) {
+                // getter: Always default to first tab in error state
+                oldIndex = 0;
+            }
+            $('#tabs').tabs({
+                // The zero-based index of the panel that is active (open)
+                active: oldIndex,
+                // Triggered after a tab has been activated
+                activate: function (event, ui) {
+                    //  Get future value
+                    var newIndex = ui.newTab.parent().children().index(ui.newTab);
+                    //  Set future value
+                    dataStore.setItem(index, newIndex)
+                }
+            });
+        }
+
+        function showServerContribTabs(result) {
+            const processed = new Set();
+            for (let serverId of result) {
+                if (processed.has(serverId))
+                    continue;
+
+                processed.add(serverId);
+
+                let selSrv = findGetParameter("server");
+                if (isDefinedAndFilled(selSrv)) {
+                    if (serverId !== selSrv)
+                        continue;
+                }
+
+                let tabsInsertion = $("#tabs-insertionPoint");
+                let tabId = "tabs-" + serverId;
+                let tabRef = "#" + tabId;
+                tabsInsertion.prepend("<li><a href=\"" + tabRef + "\">" + serverId + "</a></li>");
+
+                tabsInsertion.after("<div id=\"" + tabId + "\">" + "</div>");
+
+                requestTableForServer(serverId, $(tabRef));
+            }
+
+            showTabs();
+        }
+
+        function loadData() {
+            $("#loadStatus").html("&#8987; Please wait");
+
+            $.ajax({
+                url: "rest/branches/version",
+                success: showVersionInfo,
+                error: showErrInLoadStatus
+            });
+
+            $.ajax({
+                url: "rest/branches/suites",
+                success: function(result) {
+                    $("#loadStatus").html("");
+                    showSuitesForTeamCityRunData(result);
+                    showFormAndSuitesForPrCheck(result);
+                    showCommentJiraForm(result);
+                },
+                error: showErrInLoadStatus
+            });
+
+            $.ajax({
+                url: "rest/branches/getServerIds",
+                success: function(result) {
+                    $("#loadStatus").html("");
+                    showServerContribTabs(result);
+                },
+                error: showErrInLoadStatus
+            });
+        }
+
+        function prShowHref(srvId, suiteId, branchName) {
+            return "/pr.html?serverId=" + srvId + "&" +
+                "suiteId=" + suiteId +
+                //"&baseBranchForTc=" +
+                "&branchForTc=" +  branchName +
+                "&action=Latest";
+        }
+
+
+        function showSuitesForTeamCityRunData(result) {
+            var res = "";
+
+            for (var i = 0; i < result.length; i++) {
+                var chainAtServer = result[i];
+
+                res += "Server: <input type='text' name='serverId' value='" + chainAtServer.serverId + "' readonly>";
+                res += "Chain: <input type='text' name='suiteId' value='" + chainAtServer.suiteId + "' size='45' readonly>";
+                res += "Branch: <input type='text' name='branchForTc' class='branchForTc" + chainAtServer.serverId +
+                    "' required> ";
+                res += "Ticket: <input type='text' name='ticketId'>";
+                res += "<button name='jira' type='button' onclick='trigBuild(\"tests\")'>Start tests</button>";
+                res += "<button name='jira' onclick='trigBuild(\"tests+jira\")'>Start tests and comment JIRA ticket on ready</button><br>";
+                //res += "<button name='git' onclick='trigBuild(\"tests+jira\")'>Start tests and comment GitHub PR on ready</button>";
+                /*
+                res+="Server: <input type='text' name='serverId' value=" + serverId +" readonly>" ;
+                res+="Pull Request #<input type='text' name='prId' onkeypress='return trigBuild(event)'> ";
+                res+="<button onclick='trigBuild()'>Run All</button><br>";
+                */
+            }
+
+            $("#suitesForRunAll").html(res);
+        }
+
+        /**
+         * This form allows user to startIgnite TeamCity Run All build.
+         */
+        function showCommentJiraForm(result) {
+            var res = "";
+
+            for (var i = 0; i < result.length; i++) {
+                var chainAtServer = result[i];
+
+                res += "Server: <input type='text' name='serverId' value=" + chainAtServer.serverId +" readonly>" ;
+                res += "Chain: <input type='text' name='suiteId' value='" + chainAtServer.suiteId + "' size='45' readonly>";
+                res += "Branch: <input type='text' name='branchForTc' class='branchForTc" + chainAtServer.serverId +
+                    "' required> ";
+                res += "Ticket: <input type='text' name='ticketId'> ";
+                res += "<button name='action' onclick='notifyJira()'>Notify</button><br>";
+            }
+
+            $("#notifyJira").html(res);
+        }
+
+        /**
+         * Start Run All build on TeamCity and comment in JIRA ticket when build will be finished.
+         */
+        function trigBuild(trigCase) {
+            var fields = document.getElementById("suitesForRunAll").children;
+
+            var srvId = fields.namedItem("serverId").value;
+            var suiteId = fields.namedItem("suiteId").value;
+            var branchName = fields.namedItem("branchForTc").value;
+            var ticketId = fields.namedItem("ticketId").value;
+
+            let parentSuiteId  = suiteId;
+            let observe = trigCase !== "tests";
+            triggerBuilds(srvId, parentSuiteId , suiteId, branchName, false, observe, ticketId, null, null);
+        }
+
+        /**
+         * Comment in JIRA ticket with results for the given PR.
+         */
+        function notifyJira() {
+            var fields = document.getElementById("notifyJira").children;
+
+            var srvId = fields.namedItem("serverId").value;
+            var suiteId = fields.namedItem("suiteId").value;
+            var branchName = fields.namedItem("branchForTc").value;
+            var ticketId = fields.namedItem("ticketId").value;
+
+            commentJira(srvId, branchName, suiteId, ticketId, "");
+        }
+
+        function showFormAndSuitesForPrCheck(result) {
+            var res = "";
+
+            for (var i = 0; i < result.length; i++) {
+                var chainAtServer = result[i];
+
+                res += "<form action='pr.html'>";
+                res += "Server: <input type='text' name='serverId' value=" + chainAtServer.serverId + " readonly>";
+                res += "Chain: <input type='text' name='suiteId' value=" + chainAtServer.suiteId + ">";
+                res += "Base branch: <input class='branchForTc" + chainAtServer.serverId +
+                    "' type='text' name='baseBranchForTc'  title='Etalon branch to take base data from, e.g refs/heads/master'> ";
+                res += "<b>Branch:</b> <input class='branchForTc" + chainAtServer.serverId +
+                    "' type='text' name='branchForTc' title='Tested branch, e.g. pull/4790/head or ignite-9349' required> ";
+                res += "<input type='submit' name='action' value='Latest' title='Show latest runs'>";
+                // res+="<input type='submit' name='action' value='Chain'>";
+                res += "<input type='submit' name='action' value='History' title='Show last 10 runs merged'>";
+                res += "</form>";
+            }
+
+            $("#suitesForPrCheck").html(res);
+        }
+    </script>
+</head>
+<body>
+<div id="loadStatus"></div>
+
+<div id="tabs" >
+    <ul id="tabs-insertionPoint">
+        <li><a href="#tabs-manual" title="I'll enter branch data">Manual</a></li>
+    </ul>
+    <div id="tabs-manual">
+        <div class="formgroup">
+            Trigger new TeamCity Run All for a PR/Branch: <br>
+            <div id="suitesForRunAll"></div>
+        </div>
+        <br>
+
+        <div class="formgroup">
+            Notify JIRA (save TC Bot visa to a ticket comment): <br>
+            <div id="notifyJira"></div>
+        </div>
+        <br>
+
+        <br>Check results of branch/PR TeamCity Run All:
+        <div id="suitesForPrCheck"></div>
+
+        <!--Notify GitHub:   <br>
+        <div id="notifyGitHub">
+            <form>
+                Server: <input type='text' name='serverId' value="apache" readonly>
+                Branch: <input type='text' name='branchForTc' required>
+                <input type='submit' name='action' value='Notify'>
+            </form>
+        </div>
+        <br>-->
+    </div>
+</div>
+
+<div id="version"></div>
+
+<div style="visibility:hidden"><div id="triggerConfirm" title="Trigger Confirmation"></div><div id="triggerDialog" title="Trigger Result"></div></div>
+</body>
+</html>

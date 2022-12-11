@@ -1,0 +1,98 @@
+<html>
+<head>
+    <title>Apache Ignite Teamcity Bot - Current issues</title>
+    <link rel="icon" href="img/leaf-icon-png-7066.png">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="css/style-1.5.css">
+
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <script src="js/common-1.6.js"></script>
+    <script src="js/issues-1.0.js"></script>
+</head>
+<body>
+<script>
+var g_shownDataHashCodeHex = "";
+
+$(document).ready(function() {
+    $.getScript("js/issues-1.0.js", function(data, textStatus, jqxhr){ });
+
+    $( document ).tooltip();
+    loadData();
+     //todo fix setInterval( function() { checkForUpdate(); }, 30000);
+
+    $.ajax({ url: "rest/branches/version",  success: showVersionInfo, error: showErrInLoadStatus });
+});
+
+
+function parmsForRest() {
+    var curReqParms = "";
+    var branch = findGetParameter("branch");
+    if (branch != null) {
+        curReqParms += "?branch=" + branch;
+    }
+
+    return curReqParms;
+}
+
+function checkForUpdate() {
+    var issuesUrl = "rest/issues/updates" + parmsForRest();
+
+    $.ajax({
+        url: issuesUrl,
+        success: function (result) {
+            if (g_shownDataHashCodeHex !== "" && isDefinedAndFilled(result.hashCodeHex)) {
+                if (g_shownDataHashCodeHex === result.hashCodeHex) {
+                    var fastCheckNeeded = isDefinedAndFilled(result.runningUpdates) && result.runningUpdates > 0;
+                    var ms = fastCheckNeeded ? 3000 : 30000;
+
+                    setTimeout(checkForUpdate, ms);
+
+                    $("#loadStatus").html("");
+                } else {
+                    loadData(); // data changed, show new
+                }
+            } else {
+                loadData();
+            }
+        },
+        error: showErrInLoadStatus
+    });
+}
+
+function loadData() {
+    var curFailuresUrl = "rest/issues/list" + parmsForRest();
+    
+    $("#loadStatus").html("&#8987; Please wait");
+    $.ajax({
+        url: curFailuresUrl,
+        success: function (result) {
+            if (isDefinedAndFilled(result.runningUpdates) && result.runningUpdates > 0) {
+                setTimeout(checkForUpdate, 3000);
+
+                $("#loadStatus").html("&#8987; Updating");
+            } else {
+                $("#loadStatus").html("");
+            }
+            showData(result);
+            g_shownDataHashCodeHex = isDefinedAndFilled(result.hashCodeHex) ? result.hashCodeHex : "";
+        },
+        error: showErrInLoadStatus
+    });
+}
+
+function showData(result) {
+    $("#divFailures").html(showIssues(result) );
+}
+
+</script>
+
+<div id="loadStatus"></div>
+<div><a href=".">Home</a><br></div>
+<div id="divFailures"></div>
+
+<div id="version"></div>
+<div style="visibility:hidden;"><div id="triggerConfirm" title="Trigger Confirmation"></div><div id="triggerDialog" title="Trigger Result"></div></div>
+</body>
+</html>

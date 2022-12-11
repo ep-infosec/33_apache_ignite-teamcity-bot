@@ -1,0 +1,238 @@
+<html>
+<head>
+    <title>Apache Ignite Teamcity Bot - PR failures</title>
+    <link rel="icon" href="img/leaf-icon-png-7066.png">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="css/style-1.5.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.2/css/all.css"
+          integrity="sha384-/rXc/GQVaYpyDdyxK+ecHPVYJSN9bmVFBvjA/9eOB+pb3F2w2N6fc5qB9Ew5yIns" crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+    <!-- production version, optimized for size and speed -->
+    <!--<script src="https://cdn.jsdelivr.net/npm/vue"></script>-->
+    <script src="js/common-1.6.js"></script>
+    <script src="js/testfails-2.2.js"></script>
+</head>
+<body>
+<script>
+    let g_shownDataHashCodeHex = "";
+    let g_checkForUpdateSched = false;
+    let gVue;
+
+    function showQueryForm() {
+        let baseBranchForTc = findGetParameter("baseBranchForTc");
+
+        gVue = new Vue({
+            el: '#vueQueryForm',
+            data: {
+                baseBranchSelected: baseBranchForTc == null ? '' : baseBranchForTc,
+                tcBranchesForSrv: []
+            },
+            methods: {
+                formChanged: function () {
+                    updateHistory();
+
+                    loadData();
+                }
+            }
+        });
+
+        let srvCode = findGetParameter("serverId");
+        $.ajax({
+            url: "/rest/branches/tcBranches?srvCode=" + (srvCode == null ? "" : srvCode),
+            success: function (result) {
+                for (var i = 0; i < result.length; i++) {
+                    var id = result[i];
+                    gVue.$data.tcBranchesForSrv.push(id);
+                }
+
+                if (baseBranchForTc != null && !Vue.$data.tcBranchesForSrv.contains(baseBranchForTc)) {
+                    gVue.$data.tcBranchesForSrv.push(baseBranchForTc);
+                    gVue.$data.baseBranchSelected = baseBranchForTc;
+                }
+
+                gVue.$data.tcBranchesForSrv.sort();
+            },
+            error: showErrInLoadStatus
+        });
+    }
+
+    $(document).ready(function () {
+        $.getScript("js/testfails-2.2.js", function (data, textStatus, jqxhr) {});
+
+        $(document).tooltip();
+        showQueryForm();
+        loadData();
+
+        var branch = findGetParameter("branch");
+
+        $.ajax({url: "rest/branches/version", success: showVersionInfo, error: showErrInLoadStatus});
+    });
+
+function updateHistory() {
+    if (URL) {
+        let url = new URL(location);
+        let searchParams = new URLSearchParams(url.search);
+        let baseBranchForTc = gVue.$data.baseBranchSelected;
+
+        if (baseBranchForTc != null && baseBranchForTc != '' && baseBranchForTc != '<default>')
+            searchParams.set("baseBranchForTc", baseBranchForTc);
+        else
+            searchParams.delete("baseBranchForTc");
+
+        url.search = searchParams.toString();
+
+        history.replaceState(null, null, url.toString());
+    }
+}
+
+function parmsForRest() {
+    var curReqParms = "";
+    var branchForTc = findGetParameter("branchForTc");
+    if(branchForTc!=null) {
+        curReqParms += "?branchForTc=" + branchForTc;
+    }
+
+    var serverId = findGetParameter("serverId");
+    if(serverId!=null) {
+        curReqParms += "&serverId=" + serverId;
+    }
+
+    var suiteId = findGetParameter("suiteId");
+    if(suiteId!=null) {
+        curReqParms += "&suiteId=" + suiteId;
+    }
+
+    var action = findGetParameter("action");
+    if(action!=null) {
+        curReqParms += "&action=" + action;
+    }
+
+    var count = findGetParameter("count");
+    if(count!=null) {
+        curReqParms += "&count=" + count;
+    }
+
+    var baseBranchForTc =  gVue.$data.baseBranchSelected;
+    if(baseBranchForTc != null) {
+        curReqParms += "&baseBranchForTc=" + baseBranchForTc;
+    }
+
+    var checkAllLogs = findGetParameter("checkAllLogs");
+    if (checkAllLogs != null) {
+        curReqParms += "&checkAllLogs=" + checkAllLogs;
+    }
+
+    return curReqParms;
+}
+
+function checkForUpdate() {
+    var curFailuresUrl = "rest/pr/updates" + parmsForRest();
+
+    g_checkForUpdateSched = false;
+    $.ajax({
+        url: curFailuresUrl,
+        success: function (result) {
+            if (g_shownDataHashCodeHex !== "" && isDefinedAndFilled(result.hashCodeHex)) {
+                if (g_shownDataHashCodeHex === result.hashCodeHex) {
+                    if (!g_checkForUpdateSched) {
+                        g_checkForUpdateSched = true;
+
+                        setTimeout(checkForUpdate, 60000);
+                    }
+
+                    $("#loadStatus").html("");
+                } else {
+                    loadData(); // data changed, show new
+                }
+            } else {
+                loadData();
+            }
+        },
+        error: showErrInLoadStatus
+    });
+}
+
+    function loadData() {
+        var curFailuresUrl = "rest/pr/results" + parmsForRest();
+
+        $("#loadStatus").html("&#8987; Please wait. First load of PR run-all data may require significant time.");
+        setTimeout(loadPartialData, 3000); // in case full loading stalls
+        $.ajax({
+            url: curFailuresUrl,
+            success: function (result) {
+                $("#loadStatus").html("");
+                showData(result);
+                g_shownDataHashCodeHex = isDefinedAndFilled(result.hashCodeHex) ? result.hashCodeHex : "";
+
+                if (!g_checkForUpdateSched) {
+                    g_checkForUpdateSched = true;
+
+                    setTimeout(checkForUpdate, 20000);
+                }
+            },
+            error: showErrInLoadStatus
+        });
+    }
+
+
+    function loadPartialData() {
+        var curFailuresUrl = "rest/pr/resultsNoSync" + parmsForRest();
+
+        if (g_shownDataHashCodeHex !== "") {
+            return;
+        }
+        $.ajax({
+            url: curFailuresUrl,
+            success: function (result) {
+                if (g_shownDataHashCodeHex !== "") {
+                    return;
+                }
+
+                var validResult = true;
+                for (var i = 0; i < result.servers.length; i++) {
+                    var server = result.servers[i];
+
+                    if (isDefinedAndFilled(server.buildNotFound) && server.buildNotFound) {
+                        validResult = false;
+                        break;
+                    }
+                }
+                if (validResult)
+                    showData(result);
+
+                setTimeout(loadPartialData, 3000);
+            },
+            error: showErrInLoadStatus
+        });
+    }
+
+function showData(result) {
+    $("#divFailures").html(showChainOnServersResults(result));
+}
+</script>
+
+<div id="vueQueryForm">
+    <v-app id="prQueryForm" name="prQueryForm">
+        <div class="formgroup">
+            <span>Base branch: </span>
+            <select v-model="baseBranchSelected" @change="formChanged">
+                <option disabled value="">Please select one</option>
+
+                <option v-for="option in tcBranchesForSrv" v-bind:value="option">
+                    {{ option }}
+                </option>
+            </select>
+            &nbsp;&nbsp;
+            <span id="loadStatus"></span>
+        </div>
+        <div id="divFailures"></div>
+    </v-app>
+</div>
+
+<div id="version"></div>
+<div style="visibility:hidden"><div id="triggerConfirm" title="Trigger Confirmation"></div><div id="triggerDialog" title="Trigger Result"></div></div>
+</body>
+</html>

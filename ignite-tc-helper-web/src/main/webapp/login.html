@@ -1,0 +1,130 @@
+<html lang="en">
+<head>
+    <title>Apache Ignite Teamcity Bot - Login</title>
+    <link rel="icon" href="img/leaf-icon-png-7066.png">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="css/style-1.5.css">
+
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <script src="js/common-1.6.js"></script>
+
+    <meta name="google-signin-scope" content="profile email">
+    <meta name="google-signin-client_id"
+          content="629632280514-dp7c39editpj7at2b7mq48phq1f1uro5.apps.googleusercontent.com">
+    <script src="https://apis.google.com/js/platform.js" async defer></script>
+</head>
+<body>
+
+<script>
+  function onSignIn(googleUser) {
+     // Useful data for your client-side scripts:
+     var profile = googleUser.getBasicProfile();
+     console.log("ID: " + profile.getId()); // Don't send this directly to your server!
+     console.log('Full Name: ' + profile.getName());
+     console.log('Given Name: ' + profile.getGivenName());
+     console.log('Family Name: ' + profile.getFamilyName());
+     console.log("Image URL: " + profile.getImageUrl());
+     console.log("Email: " + profile.getEmail());
+
+     // The ID token you need to pass to your backend:
+     var id_token = googleUser.getAuthResponse().id_token;
+     console.log("ID Token: " + id_token);
+ }
+
+ $(document).ready(function() {
+     setupLogon();
+     showServerAndVersion();
+ });
+
+ function showServerAndVersion() {
+        $.ajax({
+             type: "GET",
+             url: "rest/login/primaryServerData",
+             success: function(data) {
+                if (isDefinedAndFilled(data.host))
+                  $("#serverData").html("<a href='" + data.host + "'>" +  data.host + "</a>");
+             },
+             error: showErrInLoadStatus
+         });
+
+         $.ajax({
+            url: "rest/branches/version",
+            success: showVersionInfo,
+            error: showErrInLoadStatus
+          });
+}
+
+ function setupLogon() {
+     var exitParm = findGetParameter("exit");
+     if(isDefinedAndFilled(exitParm) && exitParm==="true") {
+        tcHelperLogout();
+     }
+
+     $("#loginForm").submit(function(e) {
+         var url = "rest/login/login";
+
+         $.ajax({
+             type: "POST",
+             url: url,
+             data: $("#loginForm").serialize(), // serializes the form's elements.
+             success: function(data) {
+                 logonResponse(data);
+             },
+             error: showErrInLoadStatus
+         });
+
+         e.preventDefault(); // avoid to execute the actual submit of the form.
+     });
+ }
+
+ function logonResponse(data) {
+     if (isDefinedAndFilled(data.fullToken)) {
+         var backref = findGetParameter("backref");
+
+         try {
+              window.sessionStorage.setItem("token", data.fullToken);
+         } catch (e) {}
+
+         try {
+              window.localStorage.setItem("token", data.fullToken);
+         } catch (e) {}
+
+        if (isDefinedAndFilled(backref)) {
+             window.location.href = backref;
+         } else {
+             window.location.href = "/";
+         }
+     } else {
+         $("#loadStatus").html('Login failed, please check username and password');
+     }
+ }
+
+
+</script>
+
+<div class="container">
+
+    Please login using actual Teamcity <span id="serverData"></span> credentials:<br><br>
+
+    <form id="loginForm"><label for="uname"><b>Username</b></label>
+        <input type="text" placeholder="Enter Username" name="uname" required>
+        <br>
+
+        <label for="psw"><b>Password</b></label>
+        <input type="password" placeholder="Enter Password" name="psw" required>
+        <br>
+        <button type="submit">Login</button>
+    </form>
+    <!--
+<div class="g-signin2" data-onsuccess="onSignIn" data-theme="dark"></div>
+    -->
+</div>
+
+
+<div id="loadStatus"></div>
+<div id="version"></div>
+
+</body>
+</html>

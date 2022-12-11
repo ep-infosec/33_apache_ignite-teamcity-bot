@@ -1,0 +1,83 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+buildscript {
+    repositories {
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        classpath "gradle.plugin.nl.javadude.gradle.plugins:license-gradle-plugin:0.14.0"
+    }
+}
+
+subprojects {
+    apply plugin: "com.github.hierynomus.license"
+    apply plugin: "com.github.hierynomus.license-base"
+    apply plugin: "com.github.hierynomus.license-report"
+
+    //for subprojects header can be found in top-level project.
+    license.header = file('../header.txt')
+
+    license.exclude("*.xml");
+}
+
+allprojects {
+    apply plugin: 'java'
+    sourceCompatibility = '1.8'
+    targetCompatibility = '1.8'
+
+    ext {
+
+        jettyVer = '9.4.12.v20180830'
+
+        ignVer = '2.14.0'
+
+        guavaVer = '26.0-jre'
+
+        //dual-licensed under the EPL v1.0 (Category B list.) and the LGPL 2.1 (category X).
+        logbackVer = '1.2.3'
+
+        // MIT/X11 license, category A;
+        slf4jVer = '1.7.25'
+
+        gsonVer = '2.8.2'
+        
+        junitVer = '4.12'
+        mockitoVer = '2.22.0'
+    }
+
+    repositories {
+        //uncomment for RC testing
+        maven {
+            url "https://repository.apache.org/content/repositories/orgapacheignite-1552/"
+        }
+
+        mavenCentral()
+        mavenLocal()
+    }
+}
+
+/*
+license {
+  //  header = file('header.txt')
+
+    mapping {
+        javascript='JAVADOC_STYLE'
+    }
+}*/

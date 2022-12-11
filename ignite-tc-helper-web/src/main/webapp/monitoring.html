@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Apache Ignite Teamcity Bot - Server monitoriong page</title>
+
+    <link rel="icon" href="img/leaf-icon-png-7066.png">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="css/style-1.5.css">
+
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <script src="js/common-1.6.js"></script>
+    <script src="js/testfails-2.2.js"></script>
+</head>
+<body>
+<script>
+    $(document).ready(function() {
+        $.getScript("js/common-1.6.js", function(data, textStatus, jqxhr){ });
+
+        $( document ).tooltip();
+
+        loadData();
+    });
+
+    function loadPofilingData() {
+        $.ajax({
+            url: "rest/monitoring/profiling",
+            success: function (result) {
+                $("#loadStatus").html("");
+
+                showProfiling(result);
+            },
+            error: showErrInLoadStatus
+        });
+    }
+
+    function loadData() {
+        $("#loadStatus").html("&#8987; Please wait");
+        $.ajax({
+            url: "rest/branches/version",
+            success: showVersionInfo,
+            error: showErrInLoadStatus
+        });
+
+        $.ajax({
+            url: "rest/monitoring/tasks",
+            success: function(result) {
+                $("#loadStatus").html("");
+
+                showTasks(result);
+            },
+            error: showErrInLoadStatus
+        });
+
+        loadPofilingData();
+
+        $.ajax({
+            url: "rest/monitoring/cacheMetrics",
+            success: function(result) {
+                $("#loadStatus").html("");
+
+                showCacheMetrics(result);
+            },
+            error: showErrInLoadStatus
+        });
+    }
+
+    /**
+     * @param result org.apache.ignite.ci.web.rest.monitoring.TaskResult
+     */
+    function showTasks(result) {
+        var res = "<table class='stat'>" ;
+        res += "<tr>";
+        res += "<th>Name</th>";
+        res += "<th>Start</th>";
+        res += "<th>Count</th>";
+        res += "<th>End</th>";
+        res += "<th>Result</th>";
+        res += "</tr>";
+        for (var i = 0; i < result.length; i++) {
+            var task = result[i];
+            res += "<tr>";
+            res += "<td>" + task.name + "</td>";
+            res += "<td>" + task.start + "</td>";
+            res += "<td>" + task.count + "</td>";
+            res += "<td>" + task.end + "</td>";
+            res += "<td>" + task.result + "</td>";
+            res += "</tr>";
+        }
+        res += "</table>";
+        $("#tasks").html(res);
+    }
+
+    /**
+     * @param result org.apache.ignite.ci.web.rest.monitoring.HotSpot
+     */
+    function showProfiling(result) {
+        var res = "<table class='stat'>" ;
+        res += "<tr>";
+        res += "<th>Name</th>";
+        res += "<th>Duration</th>";
+        res += "<th>Count</th>";
+        res += "<th>Avg.Duration</th>";
+        res += "</tr>";
+        for (var i = 0; i < result.length; i++) {
+            var inv = result[i];
+            res += "<tr>";
+            res += "<td>" + inv.method + "</td>";
+            res += "<td>" + inv.duration + "</td>";
+            res += "<td>" + inv.count + "</td>";
+            res += "<td>" + inv.avgDuration + "</td>";
+            res += "</tr>";
+        }
+        res += "</table>";
+        $("#profiling").html(res);
+    }
+
+    function showCacheMetrics(result) {
+        var res = "<table class='stat'>" ;
+        res += "<tr>";
+        res += "<th>Name</th>";
+        res += "<th>Size</th>";
+        res += "<th>Parts</th>";
+        res += "</tr>";
+        for (var i = 0; i < result.length; i++) {
+            var inv = result[i];
+            res += "<tr>";
+            res += "<td>" + inv.name + "</td>";
+            res += "<td>" + inv.size + "</td>";
+            res += "<td>" + inv.parts + "</td>";
+            res += "</tr>";
+        }
+        $("#caches").html(res);
+    }
+
+    function resetProfiling() {
+        $.ajax({
+            url: "rest/monitoring/resetProfiling",
+            method: "post",
+            success: function(result) {
+                loadPofilingData();
+            },
+            error: showErrInLoadStatus
+        });
+    }
+
+    function testSlackNotification() {
+        $.ajax({
+            url: "rest/monitoring/testSlackNotification",
+            method: "post",
+            success: function(result) {
+                alert(JSON.stringify(result));
+            },
+            error: function(result) {
+                alert(JSON.stringify(result));
+            }
+        });
+
+        return false;
+    }
+
+    function testEmailNotification() {
+        $.ajax({
+            url: "rest/monitoring/testEmailNotification",
+            method: "post",
+            data: $("#emailForm").serialize(),
+            success: function(result) {
+                alert(JSON.stringify(result));
+            },
+            error: function(result) {
+                alert(JSON.stringify(result));
+            }
+        });
+
+        return false;
+    }
+
+</script>
+
+Tasks Monitoring Data:
+<div id="tasks" style="font-family: monospace"></div>
+<br>
+
+<hr>
+<b>Method Profiling Data:</b> <button onclick="resetProfiling()">Reset</button>
+<div id="profiling" style="font-family: monospace"></div>
+<br>
+
+<hr>
+<b>Ignite Caches Data:</b>
+<div id="caches" style="font-family: monospace"></div>
+
+<br>
+
+<hr>
+<b>Test Slack notification:</b> <button onclick="testSlackNotification()">Send</button>
+<b>Test Email notification:</b>
+
+<form id="emailForm"><b>Email Address:</b>
+    <input type="text" placeholder="Enter Address" name="address" required>
+</form>
+
+<button onclick="testEmailNotification()">Send</button>
+
+<br>
+
+<div id="loadStatus"></div>
+<div id="version"></div>
+
+</body>
+</html>

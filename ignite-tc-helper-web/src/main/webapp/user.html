@@ -1,0 +1,335 @@
+<html lang="en">
+<head>
+    <title>Apache Ignite Teamcity Bot - User preferences</title>
+    <link rel="icon" href="img/leaf-icon-png-7066.png">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" href="css/style-1.5.css">
+
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="https://cdn.datatables.net/1.10.16/js/jquery.dataTables.js"></script>
+    <script src="https://cdn.datatables.net/1.10.16/js/dataTables.jqueryui.js"></script>
+
+    <script src="js/common-1.6.js"></script>
+</head>
+<body>
+
+<script>
+$(document).ready(function() {
+    $(document).tooltip();
+    loadData();
+
+    var username = findGetParameter("username");
+
+    $.ajax({
+        url: "rest/branches/version",
+        success: showVersionInfo,
+        error: showErrInLoadStatus
+    });
+
+    setupAddDialog();
+    setupEditDialog();
+});
+
+function setupAddDialog() {
+    dialog = $("#addCredDialogDiv").dialog({
+        autoOpen: false,
+        height: 400,
+        width: 350,
+        modal: true,
+        buttons: {
+            "Add Credentials": addServiceCreds,
+            Cancel: function() {
+                dialog.dialog("close");
+            }
+        },
+        close: function() {
+            form[0].reset();
+        }
+    });
+
+    form = dialog.find("form").on("submit", function(event) {
+        event.preventDefault();
+        addServiceCreds();
+    });
+
+    $("#addCredsBtn").button().on("click", function() {
+        dialog.dialog("open");
+    });
+
+    $("#resetCredsBtn").button().on("click", function() {
+         confirmResetCreds();
+    });
+}
+
+function confirmResetCreds() {
+ $( "#dialogConfirmReset" ).dialog({
+      resizable: false,
+      height: "auto",
+      width: 400,
+      modal: true,
+      buttons: {
+        "Reset password and credentials": function() {
+           doResetCreds();
+            $( this ).dialog( "close" );
+        },
+        Cancel: function() {
+          $( this ).dialog( "close" );
+        }
+      }
+    });
+}
+
+function doResetCreds() {
+    var url = "rest/user/resetCredentials";
+
+    $.ajax({
+        type: "POST",
+        url: url,
+        contentType: "application/x-www-form-urlencoded; charset=utf-8",
+        success: function(data) {
+             loadData();
+        },
+        error: showErrInLoadStatus
+    });
+}
+
+
+function addServiceCreds() {
+    var url = "rest/user/addService";
+
+    $.ajax({
+        type: "POST",
+        url: url,
+        data: $("#addCred").serialize(),
+        success: function(data) {
+            let addCredsStatus = $("#addCredsStatus");
+
+            if(isDefinedAndFilled(data.result) && data.result.length>0) {
+                addCredsStatus.html('Unable to add credentials [' + data.result + "]");
+
+                return;
+            }
+            addCredsStatus.html("");
+
+            dialog.dialog("close");
+
+            loadData();
+        },
+        error: showErrInLoadStatus
+    });
+}
+
+
+function parmsForRest() {
+    var curReqParms = "";
+    var login = findGetParameter("login");
+    if (login != null) {
+        curReqParms += "?login=" + login;
+    }
+
+    return curReqParms;
+}
+
+function loadData() {
+    var curFailuresUrl = "rest/user/get" + parmsForRest();
+
+    $("#loadStatus").html("&#8987; Please wait");
+    $.ajax({
+        url: curFailuresUrl,
+        success: function(result) {
+            showData(result);
+            $("#loadStatus").html("");
+        },
+        error: showErrInLoadStatus
+    });
+}
+
+function setupEditDialog() {
+    $("#btnSaveUserData").button().on("click", function() {
+        sendUserData();
+    });
+ }
+
+ function sendUserData() {
+    var url = "rest/user/saveUserData";
+
+    $.ajax({
+        type: "POST",
+        url: url,
+        data: $("#userData").serialize(),
+        success: function(data) {
+            loadData();
+        },
+        error: showErrInLoadStatus
+    });
+ }
+
+//see TcHelperUserUi java class
+function showData(userUi) {
+    $("#login").val(userUi.login);
+    $("#fullName").val(userUi.fullName);
+    $("#email").val(userUi.email);
+
+    var res = "";
+    if(isDefinedAndFilled(userUi.subscribedAllToBranchFailures)) {
+        var map = userUi.subscribedAllToBranchFailures
+        for (var key in map) {
+           if (map.hasOwnProperty(key)) {
+
+              res+="<input id='notify_"+key+"' name='notify_"+key+"' class='element checkbox' type='checkbox' value='1'";
+              if(map[key]== true)
+                    res+=" checked";
+
+              res+="/>";
+
+                res+="<label class='choice' for='notify_"+key+"'>Notify on all failures in "+key+"</label>";
+
+                res+="<br>";
+           }
+        }
+    }
+
+    $("#notifyOnBranches").html(res);
+
+    $("#serviceLogin").val(userUi.login);
+
+    $('#serviceCreds').dataTable().fnDestroy();
+    $('#serviceCreds').DataTable({
+        data: userUi.data,
+        columns: [{
+                "data": "serviceId",
+                title: "Service ID"
+            },
+            {
+                "data": "serviceLogin",
+                title: "login"
+            },
+            {
+                "data": "servicePassword",
+                title: "Password"
+            }
+        ]
+    });
+}
+</script>
+
+<div id="form_container">
+
+    <form id="userData" class="appnitro">
+        <div class="form_description">
+            <h2>Teamcity helper User</h2>
+            <p>User data and preferences</p>
+        </div>
+        <ul>
+            <li>
+                <label class="description" for="login">Login</label>
+                <div>
+                    <input id="login" name="login" class="element text medium" type="text" maxlength="255"
+                           readonly/>
+                </div>
+            </li>
+            <li>
+                <label class="description" for="fullName">Full Name</label>
+                <div>
+                    <input id="fullName" name="fullName" class="element text medium" type="text" maxlength="255"
+                           value=""/>
+                </div>
+            </li>
+            <li>
+                <label class="description" for="email">Email</label>
+                <div>
+                    <input id="email" name="email" class="element text medium" type="text" maxlength="255"
+                           value=""/>
+                </div>
+            </li>
+            <!--
+            <li>
+                <label class="description" for="email2">Additional Email</label>
+                <div>
+                    <input id="email2" name="email2" class="element text medium" type="text" maxlength="255"
+                           value=""/>
+                </div>
+            </li>
+            <li>
+                <label class="description" for="slackid">Slack ID</label>
+                <div>
+                    <input id="slackid" name="slackid" class="element text medium" type="text" maxlength="255"
+                           value=""/>
+                </div>
+            </li>
+
+                <input id="element_5_1" name="element_5_1" class="element checkbox" type="checkbox" value="1"/>
+                <label class="choice" for="element_5_1">Notify on build problems related to me</label>
+                <input id="element_5_2" name="element_5_2" class="element checkbox" type="checkbox" value="1"/>
+                <label class="choice" for="element_5_2">I agree to be responsible for MTCGA issues</label>
+
+            -->
+
+            <li>
+                <label class="description">Tracked Branch Notification Preferences</label>
+
+                <div id="notifyOnBranches"></div>
+            </li>
+
+            <li class="buttons">
+                <input type="hidden" name="form_id" value="13472"/>
+
+                <input id="btnSaveUserData" class="button_text" value="Save"/>
+            </li>
+        </ul>
+    </form>
+
+
+    <h3>Service credentials</h3>
+    <div class="ui-widget">
+        <table id="serviceCreds" class="ui-widget ui-widget-content">
+            <thead>
+            <tr class="ui-widget-header ">
+                <th>Service Id</th>
+                <th>Login</th>
+                <th>Password</th>
+            </tr>
+            </thead>
+        </table>
+    </div>
+    <button id="addCredsBtn">Add credentials</button>
+
+    <button id="resetCredsBtn">Reset credentials</button>
+</div>
+
+<div id="loadStatus"></div>
+<div id="version"></div>
+
+<div style="visibility:none; position:absolute; top:-1000px">
+    <div id="addCredDialogDiv" title="Add service credentials">
+        <form id="addCred">
+            <fieldset>
+                <ul>
+                    <li>
+
+                    <li><label for="serviceId">Service ID</label>
+                <input type="text" name="serviceId" id="serviceId"
+                       class="text ui-widget-content ui-corner-all"></li>
+                    <li><label for="serviceLogin">Login</label>
+                <input type="text" name="serviceLogin" id="serviceLogin"
+                       class="text ui-widget-content ui-corner-all"></li>
+                    <li> <label for="servicePassword">Password</label>
+                <input type="password" name="servicePassword" id="servicePassword"
+                       class="text ui-widget-content ui-corner-all"></li>
+                </ul>
+
+                <div id="addCredsStatus"></div>
+                <!-- Allow form submission with keyboard without duplicating the dialog button -->
+                <input type="submit" tabindex="-1" style="position:absolute; top:-1000px">
+            </fieldset>
+        </form>
+    </div>
+
+    <div id="dialogConfirmReset" title="Reset password and remove services from account?">
+        <p><span class="ui-icon ui-icon-alert" style="float:left; margin:12px 12px 20px 0;"></span>These items will be permanently deleted and cannot be recovered. Are you sure?</p>
+    </div>
+</div>
+</body>
+</html>
